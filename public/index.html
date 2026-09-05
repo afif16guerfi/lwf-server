@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>منصة انخراط الحكام | الرابطة الولائية لكرة القدم الوادي</title>
+<!-- Sets the dark-mode class on <html> before any CSS is even requested,
+     so a returning user who chose dark mode never sees a flash of the
+     light theme while the page loads. Falls back to the OS/browser's
+     color-scheme preference if the person hasn't chosen explicitly yet. -->
+<script>(function(){try{
+  var t = localStorage.getItem('lwf_theme');
+  var wantsDark = t ? t === 'dark' : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  if(wantsDark) document.documentElement.classList.add('dark-mode');
+}catch(e){}})();</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="/chat.css">
+<link rel="stylesheet" href="/announcements.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="/app.js"></script>
+<script src="/emoji-data.js"></script>
+<script src="/chat.js"></script>
+<script src="/announcements.js"></script>
+<script src="/notifications.js"></script>
+</body>
+</html>

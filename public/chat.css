@@ -1,0 +1,580 @@
+/* =========================================================
+   LWF EL OUED — Chat module styling
+   Extends styles.css's design tokens (--green-deep, --gold, etc.)
+   without touching the base stylesheet. RTL-first, mobile-first.
+   ========================================================= */
+
+/* Locked in from chat.js while the chat page is mounted: stops the *document*
+   itself from ever being able to scroll, so the only thing that can move is
+   the messages list. Without this, on some browsers/viewports a few extra
+   pixels of page-level scroll are enough to drag the whole chat panel (and
+   its composer) upward past the bottom of the screen once a conversation has
+   enough messages to fill it — the actual root cause of the "composer
+   disappears" bug, not a message-count limit of any kind. */
+html.chat-locked, body.chat-locked{ height:100%; overflow:hidden; overscroll-behavior:none; }
+/* #app (see styles.css) is a column flexbox; while chat is open we give it a
+   hard height instead of just min-height, so #page-slot's flex:1 has an
+   actual bound to fill/clip against instead of growing forever. --app-vh is
+   set from JS (chat.js) via the Visual Viewport API on Chrome/Samsung
+   Internet/Firefox Mobile/Safari, and keeps this exact on phones where the
+   on-screen keyboard doesn't reliably shrink 100dvh; 100dvh alone is used
+   as the fallback everywhere else. */
+body.chat-locked #app{ height:100vh; height:100dvh; height:var(--app-vh, 100dvh); overflow:hidden; }
+/* The site footer (contact info / credit line) is a normal document-flow
+   sibling of #page-slot inside #app, so as long as it renders it takes a
+   real, fixed chunk (its own padding + a 60px margin-top) out of the exact
+   viewport height #app is now locked to — shrinking #page-slot, and with
+   it the whole chat shell, by that same amount. It has no purpose on a
+   full-screen chat UI, so it's removed from layout entirely while chat is
+   open rather than just visually hidden (display:none, not opacity/visibility,
+   so it stops taking space). */
+body.chat-locked .site-footer{ display:none; }
+
+.chat-page{
+  width:100%; flex:1 1 auto; min-height:0; display:flex; flex-direction:column;
+}
+/* Full-bleed, single-screen app layout on every device — no card frame, no
+   outer margins. (Message bubbles still cap their own width via
+   .chat-bubble-wrap below, so text doesn't stretch edge-to-edge on very wide
+   monitors — only the shell itself does.) */
+.chat-shell{
+  display:grid; grid-template-columns:320px 1fr; grid-template-rows:minmax(0,1fr); height:100%;
+  background:var(--paper); overflow:hidden;
+}
+
+/* ---------- sidebar ---------- */
+.chat-sidebar{ display:flex; flex-direction:column; border-inline-start:1px solid var(--line); background:#fffdf9; min-width:0; min-height:0; }
+.chat-sidebar-head{ display:flex; align-items:center; justify-content:space-between; padding:16px 16px 10px; }
+.chat-sidebar-head h3{ margin:0; font-size:17px; color:var(--green-deep); }
+.chat-search{ padding:0 14px 12px; }
+.chat-search input{
+  width:100%; padding:9px 13px; border:1.5px solid var(--line-strong); border-radius:99px;
+  font-size:13.5px; background:#fff; outline:none;
+}
+.chat-search input:focus{ border-color:var(--green-deep); box-shadow:var(--focus-ring, 0 0 0 3px var(--green-pale)); }
+.chat-conv-list{ flex:1; overflow-y:auto; min-height:0; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; }
+.chat-empty-list{ padding:34px 16px; text-align:center; color:var(--ink-soft); font-size:13px; }
+
+.chat-conv-item{
+  display:flex; align-items:center; gap:12px; padding:11px 14px; cursor:pointer;
+  border-bottom:1px solid #f1ede0; transition:.12s background;
+}
+.chat-conv-item:hover{ background:var(--green-pale); }
+.chat-conv-item.active{ background:var(--green-pale); box-shadow:inset 3px 0 0 var(--green-deep); }
+.chat-conv-info{ flex:1; min-width:0; }
+.chat-conv-top{ display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+.chat-conv-name{ font-weight:700; font-size:14px; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.chat-conv-time{ font-size:11px; color:var(--ink-soft); flex-shrink:0; }
+.chat-conv-bottom{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:2px; }
+.chat-conv-preview{ font-size:12.5px; color:var(--ink-soft); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0; }
+.chat-typing-text{ font-size:12.5px; color:var(--green-deep); font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0; }
+.chat-conv-badge{
+  background:var(--red-accent); color:#fff; font-size:10.5px; font-weight:700; min-width:19px; height:19px;
+  border-radius:99px; display:flex; align-items:center; justify-content:center; padding:0 5px; flex-shrink:0;
+}
+
+/* ---------- avatars ---------- */
+.chat-avatar{
+  width:46px; height:46px; border-radius:50%; background:linear-gradient(135deg,var(--green-deep),var(--green-mid));
+  color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:17px;
+  flex-shrink:0; position:relative;
+}
+img.chat-avatar{ object-fit:cover; display:block; background:var(--line); }
+.chat-avatar.sm{ width:32px; height:32px; font-size:13px; }
+.chat-avatar.public{ background:linear-gradient(135deg,var(--gold),#8f6e26); }
+.chat-avatar.group{ background:linear-gradient(135deg,#1d5b93,#123a5e); }
+/* Distinct from the plain per-referee green (photo/initials), the gold
+   public-chat badge, and the navy group badge — a rich purple/indigo reads
+   as "official platform account" and won't be confused with any of the
+   other three at a glance in the conversation list. */
+.chat-avatar.admin{ background:linear-gradient(135deg,#7a45ad,#3d2160); }
+.chat-avatar.online:after{
+  content:""; position:absolute; bottom:0; left:0; width:11px; height:11px; border-radius:50%;
+  background:#2fbf6b; border:2px solid var(--paper);
+}
+.chat-avatar.sm.online:after{ width:9px; height:9px; }
+
+/* ---------- main pane ---------- */
+.chat-main{ display:flex; flex-direction:column; min-width:0; min-height:0; background:
+    radial-gradient(900px 260px at 100% 0%, rgba(11,110,79,0.04), transparent),
+    var(--sand);
+}
+.chat-placeholder{ margin:auto; text-align:center; color:var(--ink-soft); padding:40px; }
+.chat-placeholder .icon{ font-size:48px; margin-bottom:10px; }
+.chat-view{ display:flex; flex-direction:column; height:100%; min-height:0; position:relative; overflow:hidden; }
+
+.chat-view-header{
+  display:flex; align-items:center; gap:12px; padding:12px 18px; background:var(--paper);
+  border-bottom:1px solid var(--line); box-shadow:0 1px 0 var(--gold);
+  position:sticky; top:0; z-index:6; flex-shrink:0;
+}
+.chat-back-btn{ display:none; }
+.chat-view-title{ flex:1; min-width:0; }
+.chat-view-name{ font-weight:700; font-size:15px; color:var(--ink); }
+.chat-view-sub{ font-size:12px; color:var(--ink-soft); margin-top:1px; }
+
+/* ---------- icon buttons / dropdowns ---------- */
+.chat-icon-btn{
+  border:none; background:transparent; font-size:17px; width:36px; height:36px; border-radius:50%; outline:none;
+  cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--ink-soft);
+  transition:background-color var(--transition, .15s), color var(--transition, .15s), box-shadow var(--transition, .15s);
+  -webkit-tap-highlight-color:transparent;
+}
+.chat-icon-btn:hover{ background:var(--green-pale); color:var(--green-deep); }
+.chat-icon-btn:focus-visible{ box-shadow:var(--focus-ring, 0 0 0 3px var(--green-pale)); }
+.chat-icon-btn.xs{ width:26px; height:26px; font-size:13px; }
+.chat-menu-wrap, .chat-header-menu-wrap, .chat-msg-menu-wrap{ position:relative; }
+.chat-dropdown{
+  position:absolute; top:calc(100% + 6px); left:0; background:#fff; border:1px solid var(--line);
+  border-radius:10px; box-shadow:0 10px 30px -8px rgba(0,0,0,.25); z-index:1000; min-width:200px;
+  max-height:min(60vh, 320px); overflow-y:auto;
+  display:flex; flex-direction:column; padding:6px;
+}
+/* Both the sidebar "+" menu and the conversation header "⋮" menu are the LAST
+   flex child in their row, which — in this RTL layout — puts their trigger
+   button at the visual LEFT edge of the row. Anchoring their dropdown with
+   right:0 makes it grow further left, off the edge of the screen entirely on
+   the single-column mobile layout (no room to the left at all). Anchoring
+   with left:0 instead grows the dropdown rightward, into the row's own
+   available space, so it always stays fully on-screen. */
+.chat-dropdown-left{ left:0; right:auto; }
+.chat-header-menu-wrap .chat-dropdown{ left:0; right:auto; }
+.chat-dropdown button{
+  background:transparent; border:none; text-align:right; padding:9px 12px; font-size:13.5px; font-weight:500; border-radius:var(--radius-sm, 7px);
+  cursor:pointer; color:var(--ink); white-space:nowrap; outline:none;
+  transition:background-color var(--transition, .15s), color var(--transition, .15s);
+}
+.chat-dropdown button:hover{ background:var(--green-pale); color:var(--green-deep); }
+.chat-dropdown button:focus-visible{ background:var(--green-pale); color:var(--green-deep); box-shadow:inset 0 0 0 2px var(--green-deep); }
+.chat-msg-dropdown{ top:auto; bottom:calc(100% + 4px); min-width:130px; }
+/* Composer menus open upward — they live at the bottom of the screen, so a
+   downward dropdown would spill off-screen. */
+.chat-dropdown-up{ top:auto; bottom:calc(100% + 8px); }
+
+/* ---------- messages ---------- */
+.chat-messages{
+  flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior:contain; -webkit-overflow-scrolling:touch;
+  padding:18px 22px; display:flex; flex-direction:column; gap:2px;
+}
+.chat-day-sep{ display:flex; justify-content:center; margin:16px 0 10px; }
+.chat-day-sep span{
+  background:#fff; border:1px solid var(--line); color:var(--ink-soft); font-size:11.5px; font-weight:700;
+  padding:4px 14px; border-radius:99px;
+}
+.chat-msg{ display:flex; margin:3px 0; }
+.chat-msg.mine{ justify-content:flex-end; }
+.chat-msg.theirs{ justify-content:flex-start; }
+.chat-bubble-wrap{ max-width:min(72%, 560px); display:flex; align-items:flex-end; gap:6px; }
+.chat-msg.theirs .chat-bubble-wrap{ flex-direction:row; }
+.chat-msg.mine .chat-bubble-wrap{ flex-direction:row-reverse; }
+.chat-msg-sender{ font-size:11.5px; font-weight:700; color:var(--green-deep); margin-bottom:2px; padding:0 4px; }
+.chat-admin-tag{
+  background:var(--gold); color:#fff; font-size:9.5px; font-weight:700; padding:1px 7px; border-radius:99px; margin-inline-start:4px;
+}
+.chat-owner-tag{ background:var(--green-pale); color:var(--green-deep); font-size:9.5px; font-weight:700; padding:1px 7px; border-radius:99px; margin-inline-start:4px; }
+
+.chat-bubble{
+  background:#fff; border:1px solid var(--line); border-radius:16px; padding:9px 13px 6px;
+  box-shadow:0 2px 6px -3px rgba(0,0,0,.12); position:relative; min-width:64px;
+  -webkit-touch-callout:none; /* stop iOS's own long-press "Copy/Look Up/Share" bubble from
+    covering our custom reaction picker on long-press — text is still selectable, and
+    copying text has its own explicit 📋 button in the menu either way */
+}
+.chat-msg.mine .chat-bubble{ background:linear-gradient(135deg,var(--green-deep),var(--green-mid)); border-color:transparent; color:#fff; }
+.chat-bubble.admin-msg{ border-inline-start:3px solid var(--gold); }
+.chat-msg.mine .chat-bubble.admin-msg{ border-inline-start:3px solid rgba(255,255,255,.7); }
+.chat-msg-text{ font-size:14px; line-height:1.55; word-wrap:break-word; white-space:pre-wrap; }
+.chat-msg-deleted{ font-size:13px; font-style:italic; color:var(--ink-soft); }
+.chat-msg.mine .chat-msg-deleted{ color:rgba(255,255,255,.85); }
+.chat-msg-meta{ display:flex; align-items:center; justify-content:flex-end; gap:5px; margin-top:3px; }
+.chat-msg-edited{ font-size:10px; opacity:.8; font-style:italic; }
+.chat-msg-time{ font-size:10.5px; opacity:.75; }
+.chat-msg-tick{ font-size:12px; opacity:.75; }
+.chat-msg-tick.delivered{ opacity:1; }
+.chat-msg-tick.read{ color:#8fd6ff; opacity:1; }
+
+.chat-msg-image{ max-width:260px; max-height:260px; border-radius:10px; display:block; margin-bottom:4px; cursor:zoom-in; object-fit:cover; }
+.chat-file-chip{
+  display:flex; align-items:center; gap:8px; background:rgba(0,0,0,.04); border-radius:10px; padding:8px 10px; margin-bottom:4px;
+  text-decoration:none; color:inherit; font-size:12.5px; font-weight:700;
+}
+.chat-msg.mine .chat-file-chip{ background:rgba(255,255,255,.16); }
+.chat-file-icon{ font-size:16px; }
+.chat-file-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:180px; }
+
+.chat-msg-menu-wrap{ opacity:0; transition:.12s opacity; display:flex; align-items:center; gap:2px; }
+.chat-msg:hover .chat-msg-menu-wrap, .chat-msg-menu-wrap:focus-within{ opacity:1; }
+/* `hover:none` is the "correct" way to detect touch-only devices, but it's
+   genuinely unreliable on a lot of real Android phones/tablets/webviews —
+   plenty of them report `hover:hover` even with no mouse ever attached, which
+   left the react/menu buttons stuck invisible there. html.is-touch-device
+   (set from JS in chat.js via a real capability check — 'ontouchstart' in
+   window / navigator.maxTouchPoints) is the reliable fallback; kept alongside
+   the media query rather than replacing it, since neither signal alone
+   covers every device. */
+@media (hover:none){ .chat-msg-menu-wrap{ opacity:1; } }
+html.is-touch-device .chat-msg-menu-wrap{ opacity:1; }
+
+/* ---------- reactions ---------- */
+.chat-reaction-wrap{ position:relative; }
+/* Small pill row under the bubble, one pill per distinct emoji with its
+   count — "❤️ 5  👍 3  😂 2" per the spec. Placed in normal flow (not
+   overlapping the bubble edge) so it never gets clipped by a neighbouring
+   message on small screens; .chat-msg.has-reactions adds the extra breathing
+   room this needs above/below it. */
+.chat-msg-reactions{ display:flex; flex-wrap:wrap; gap:4px; margin-top:5px; cursor:pointer; }
+.chat-msg.mine .chat-msg-reactions{ justify-content:flex-end; }
+.chat-reaction-pill{
+  display:inline-flex; align-items:center; gap:3px; background:#fff; border:1px solid var(--line);
+  border-radius:99px; padding:2px 8px; font-size:12.5px; line-height:1.6; box-shadow:0 1px 3px -1px rgba(0,0,0,.15);
+  transition:transform var(--transition-fast, .12s);
+}
+.chat-msg-reactions:hover .chat-reaction-pill{ transform:translateY(-1px); }
+.chat-reaction-pill.mine{ border-color:var(--green-deep); background:var(--green-pale); }
+.chat-reaction-count{ font-size:11px; font-weight:700; color:var(--ink-soft); }
+.chat-reaction-pill.mine .chat-reaction-count{ color:var(--green-deep); }
+.chat-msg.has-reactions{ margin-bottom:8px; }
+
+/* The picker popover (🙂+ button) — a horizontal row of emoji instead of the
+   usual vertical list of text actions, reusing .chat-dropdown for its
+   positioning/clamping behaviour (see positionDropdown in chat.js) so it
+   never spills off-screen on any device. */
+.chat-reaction-picker{
+  top:auto; bottom:calc(100% + 6px); min-width:0; flex-direction:row; gap:2px; padding:5px;
+}
+.chat-reaction-pick-btn{
+  border:none; background:transparent; font-size:19px; width:34px; height:34px; border-radius:50%;
+  cursor:pointer; display:flex; align-items:center; justify-content:center; outline:none;
+  transition:transform var(--transition-fast, .12s), background-color var(--transition, .15s);
+  -webkit-tap-highlight-color:transparent;
+}
+.chat-reaction-pick-btn:hover, .chat-reaction-pick-btn:focus-visible{ background:var(--green-pale); transform:scale(1.15); }
+.chat-reaction-pick-btn.active{ background:var(--green-pale); box-shadow:inset 0 0 0 1.5px var(--green-deep); }
+
+
+.chat-edit-textarea{
+  width:100%; min-width:220px; border:1.5px solid var(--line-strong); border-radius:8px; padding:7px 10px;
+  font-size:13.5px; font-family:inherit; resize:vertical; color:var(--ink);
+}
+.chat-edit-actions{ display:flex; gap:8px; margin-top:6px; }
+
+/* ---------- composer ---------- */
+/* flex-shrink:0 + position:sticky pins it to the bottom of .chat-view no
+   matter how tall the message list's content gets — it is never a candidate
+   for being squeezed out, and stays anchored even if some ancestor ever
+   regains scroll (defense in depth on top of the chat-locked body rule). */
+.chat-composer{
+  background:var(--paper); border-top:1px solid var(--line); padding:10px 16px;
+  padding-bottom:calc(10px + env(safe-area-inset-bottom, 0px));
+  flex-shrink:0; position:sticky; bottom:0; z-index:5;
+}
+.chat-attach-chip{
+  display:inline-flex; align-items:center; gap:8px; background:var(--green-pale); border-radius:10px;
+  padding:6px 10px; margin-bottom:8px; font-size:12.5px; font-weight:700; color:var(--green-deep);
+}
+.chat-composer-row{ display:flex; align-items:flex-end; gap:8px; }
+.chat-composer-plus-wrap, .chat-emoji-wrap{ position:relative; flex-shrink:0; }
+.chat-composer-row textarea{
+  flex:1; resize:none; border:1.6px solid var(--line-strong); border-radius:18px; padding:10px 16px;
+  font-size:14px; font-family:inherit; max-height:140px; outline:none; line-height:1.5; background:#fff;
+}
+.chat-composer-row textarea:focus{ border-color:var(--green-deep); box-shadow:var(--focus-ring, 0 0 0 3px var(--green-pale)); }
+.chat-send-btn{
+  width:42px; height:42px; border-radius:50%; border:none; background:var(--green-deep); color:#fff; font-size:18px; outline:none;
+  cursor:pointer; flex-shrink:0; display:flex; align-items:center; justify-content:center;
+  transition:transform var(--transition-fast, .12s), background-color var(--transition, .15s), box-shadow var(--transition, .15s);
+}
+.chat-send-btn:hover{ background:var(--green-mid); transform:scale(1.05); }
+.chat-send-btn:active{ transform:scale(.96); }
+.chat-send-btn:focus-visible{ box-shadow:var(--focus-ring, 0 0 0 3px var(--green-pale)); }
+
+.chat-drop-overlay{
+  position:absolute; inset:0; background:rgba(11,110,79,.12); border:3px dashed var(--green-deep); border-radius:12px;
+  display:none; align-items:center; justify-content:center; z-index:30; pointer-events:none;
+}
+.chat-drop-overlay.active{ display:flex; }
+.chat-drop-overlay div{ background:#fff; padding:16px 26px; border-radius:12px; font-weight:700; color:var(--green-deep); box-shadow:var(--shadow); }
+
+/* ---------- emoji picker ---------- */
+/* Default: right:0 anchors the panel's right edge to the emoji button, so it
+   opens toward the LEFT of the button — the button sits close to the right
+   edge of the composer row in this RTL layout, so growing left is what stays
+   on-screen. chat.js's positionEmojiPanel() measures available space at open
+   time and adds .chat-emoji-panel-flip (or a small inward nudge) whenever
+   that default would still clip against chat-shell's overflow:hidden or the
+   viewport edge, so the panel is always fully visible on desktop and mobile. */
+.chat-emoji-panel{
+  position:absolute; bottom:calc(100% + 8px); right:0; left:auto; width:300px; max-width:88vw;
+  background:#fff; border:1px solid var(--line); border-radius:14px; box-shadow:0 10px 30px -8px rgba(0,0,0,.25);
+  z-index:1000; display:flex; flex-direction:column; overflow:hidden;
+}
+.chat-emoji-panel.chat-emoji-panel-flip{ right:auto; left:0; }
+.chat-emoji-search{ padding:8px 8px 0; }
+.chat-emoji-search input{
+  width:100%; padding:7px 11px; border:1.5px solid var(--line-strong); border-radius:99px; font-size:12.5px;
+  background:#fff; outline:none;
+}
+.chat-emoji-search input:focus{ border-color:var(--green-deep); box-shadow:var(--focus-ring, 0 0 0 3px var(--green-pale)); }
+.chat-emoji-tabs{ display:flex; gap:2px; padding:8px; overflow-x:auto; border-bottom:1px solid var(--line); }
+.chat-emoji-tab{
+  border:none; background:transparent; font-size:17px; width:30px; height:30px; border-radius:8px; flex-shrink:0;
+  cursor:pointer; display:flex; align-items:center; justify-content:center; opacity:.55; outline:none;
+  transition:.12s background-color, .12s opacity;
+}
+.chat-emoji-tab:hover{ background:var(--green-pale); opacity:1; }
+.chat-emoji-tab.active{ background:var(--green-pale); opacity:1; box-shadow:inset 0 0 0 1.5px var(--green-deep); }
+.chat-emoji-grid{
+  display:grid; grid-template-columns:repeat(7, 1fr); gap:2px; padding:8px; max-height:220px; overflow-y:auto;
+  overscroll-behavior:contain;
+}
+.chat-emoji-btn{
+  border:none; background:transparent; font-size:20px; line-height:1; width:34px; height:34px; border-radius:8px;
+  cursor:pointer; display:flex; align-items:center; justify-content:center; outline:none; transition:.12s background-color;
+}
+.chat-emoji-btn:hover, .chat-emoji-btn:focus-visible{ background:var(--green-pale); }
+
+/* ---------- polls ---------- */
+.chat-msg-poll .chat-bubble-wrap{ max-width:min(88%, 400px); }
+.chat-poll{ min-width:220px; }
+.chat-poll-question{ font-weight:700; font-size:13.5px; margin-bottom:8px; line-height:1.5; }
+.chat-poll-options{ display:flex; flex-direction:column; gap:6px; }
+.chat-poll-option-btn{
+  display:flex; align-items:center; gap:9px; width:100%; text-align:right; padding:8px 11px;
+  border:1.5px solid var(--line-strong); border-radius:10px; background:#fff; color:var(--ink);
+  font-size:13px; font-family:inherit; cursor:pointer; outline:none; transition:.12s border-color, .12s background-color;
+}
+.chat-poll-option-btn:hover{ border-color:var(--green-deep); background:var(--green-pale); }
+.chat-poll-option-btn:focus-visible{ box-shadow:var(--focus-ring, 0 0 0 3px var(--green-pale)); }
+.chat-msg.mine .chat-poll-option-btn{ background:rgba(255,255,255,.12); border-color:rgba(255,255,255,.5); color:#fff; }
+.chat-msg.mine .chat-poll-option-btn:hover{ background:rgba(255,255,255,.22); }
+.chat-poll-radio{ width:15px; height:15px; border-radius:50%; border:1.6px solid currentColor; flex-shrink:0; opacity:.7; }
+.chat-poll-result{ font-size:12.5px; }
+.chat-poll-result-top{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:3px; font-weight:600; }
+.chat-poll-result.mine .chat-poll-result-top span:first-child{ color:var(--green-deep); }
+.chat-msg.mine .chat-poll-result.mine .chat-poll-result-top span:first-child{ color:#fff; }
+.chat-poll-bar{ height:7px; border-radius:99px; background:rgba(0,0,0,.08); overflow:hidden; }
+.chat-msg.mine .chat-poll-bar{ background:rgba(255,255,255,.25); }
+.chat-poll-bar-fill{ height:100%; border-radius:99px; background:var(--green-deep); transition:width .25s ease; }
+.chat-msg.mine .chat-poll-bar-fill{ background:#fff; }
+.chat-poll-meta{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:8px; font-size:10.5px; opacity:.8; }
+.chat-poll-closed{ font-weight:700; }
+.chat-poll-result.clickable{ cursor:pointer; border-radius:8px; padding:3px 4px; margin:-3px -4px; transition:background .15s ease; }
+.chat-poll-result.clickable:hover{ background:rgba(0,0,0,.05); }
+.chat-msg.mine .chat-poll-result.clickable:hover{ background:rgba(255,255,255,.14); }
+.chat-poll-total.clickable{ cursor:pointer; text-decoration:underline; text-underline-offset:2px; }
+.chat-poll-anon-badge{ opacity:.85; }
+.chat-poll-anon-toggle{ display:flex; align-items:center; gap:8px; font-size:12.5px; margin:10px 0 4px; cursor:pointer; }
+.chat-poll-anon-toggle input{ accent-color:var(--green-deep); width:16px; height:16px; }
+.chat-poll-voters-group{ margin-bottom:14px; }
+.chat-poll-voters-group:last-child{ margin-bottom:0; }
+.chat-poll-voters-heading{ font-weight:700; font-size:13px; margin-bottom:6px; color:var(--green-deep); }
+
+/* ---------- poll creation modal ---------- */
+.chat-poll-type-toggle{ display:flex; gap:8px; margin-bottom:4px; }
+.chat-poll-type-btn{
+  flex:1; padding:8px 10px; border:1.5px solid var(--line-strong); border-radius:var(--radius-sm, 9px);
+  background:#fff; color:var(--ink-soft); font-size:12.5px; font-weight:700; font-family:inherit; cursor:pointer;
+  outline:none; transition:.12s border-color, .12s background-color, .12s color;
+}
+.chat-poll-type-btn.active{ border-color:var(--green-deep); background:var(--green-pale); color:var(--green-deep); }
+.chat-poll-option-row{ display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+.chat-poll-option-row.static{
+  display:flex; align-items:center; gap:9px; padding:8px 11px; border:1.5px dashed var(--line-strong);
+  border-radius:10px; font-size:13px; color:var(--ink-soft);
+}
+.chat-poll-option-row input.chat-poll-option-input{
+  flex:1; padding:8px 11px; border:1.5px solid var(--line-strong); border-radius:var(--radius-sm, 9px);
+  font-size:13px; margin-bottom:0; background:#fff; outline:none;
+}
+.chat-poll-option-row input.chat-poll-option-input:focus{ border-color:var(--green-deep); box-shadow:var(--focus-ring, 0 0 0 3px var(--green-pale)); }
+
+/* ---------- modals ---------- */
+.chat-modal-overlay{
+  position:absolute; inset:0; background:rgba(15,20,15,.55); display:flex; align-items:center; justify-content:center;
+  padding:16px; z-index:50;
+}
+.chat-modal{ background:#fff; border-radius:16px; width:100%; max-width:440px; max-height:86%; display:flex; flex-direction:column; box-shadow:0 24px 60px -12px rgba(0,0,0,.45); }
+.chat-modal-head{ display:flex; align-items:center; justify-content:space-between; padding:16px 18px; border-bottom:1px solid var(--line); }
+.chat-modal-head h3{ margin:0; font-size:16px; color:var(--green-deep); }
+.chat-modal-body{ padding:16px 18px; overflow-y:auto; }
+.chat-modal-body .chat-search, .chat-modal-body > input{ width:100%; }
+.chat-modal-body input[type=text], .chat-modal-body input[type=datetime-local]{
+  width:100%; padding:9px 12px; border:1.5px solid var(--line-strong); border-radius:var(--radius-sm, 9px); font-size:13.5px; margin-bottom:10px; background:#fff;
+  outline:none; transition:border-color var(--transition, .15s), box-shadow var(--transition, .15s);
+}
+.chat-modal-body input[type=text]:focus, .chat-modal-body input[type=datetime-local]:focus{ border-color:var(--green-deep); box-shadow:var(--focus-ring, 0 0 0 3px var(--green-pale)); }
+.chat-modal-foot{ display:flex; justify-content:flex-end; gap:10px; padding:14px 18px; border-top:1px solid var(--line); }
+
+.chat-member-picker{ max-height:220px; overflow-y:auto; border:1px solid var(--line); border-radius:10px; }
+.chat-picker-row{ display:flex; align-items:center; gap:10px; padding:9px 12px; font-size:13.5px; cursor:pointer; border-bottom:1px solid #f1ede0; }
+.chat-picker-row:last-child{ border-bottom:none; }
+.chat-picker-row:hover{ background:var(--green-pale); }
+.chat-picker-row input[type=checkbox]{ accent-color:var(--green-deep); width:16px; height:16px; }
+.chat-picker-hint{ margin-inline-start:auto; }
+
+.chat-member-row{ display:flex; align-items:center; gap:10px; padding:8px 4px; border-bottom:1px dotted var(--line-strong); }
+.chat-member-row:last-child{ border-bottom:none; }
+.chat-member-name{ flex:1; font-size:13.5px; font-weight:700; }
+.chat-member-info{ flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
+.chat-member-info .chat-member-name{ flex:none; }
+.chat-member-presence{ font-size:11.5px; color:var(--ink-soft); }
+.chat-member-presence.online{ color:#1fbf6b; font-weight:700; }
+
+/* ---------- topbar chat nav link / badge ---------- */
+.chat-nav-link{ position:relative; }
+.chat-nav-badge{
+  position:absolute; top:-6px; left:-6px; background:var(--red-accent); color:#fff; font-size:10px; font-weight:700;
+  min-width:17px; height:17px; border-radius:99px; display:flex; align-items:center; justify-content:center; padding:0 4px;
+}
+
+/* ---------- responsive ---------- */
+/* .nav-burger's display (none on desktop, flex under 720px) is fully owned
+   by styles.css now. An unconditional ".nav-burger{display:none;...}" used
+   to live here too, loaded after styles.css in index.html's <head> — same
+   selector specificity, later in the cascade, so it silently won and kept
+   the button hidden on every screen size no matter what styles.css said.
+   That's why the burger never appeared even after redeploying/clearing
+   cache; it wasn't a caching issue at all, it was this override. */
+
+/* Below 860px there's only room for one pane at a time (sidebar OR the
+   active conversation) — see .show-main toggling in chat.js. Above that,
+   both panes sit side by side edge-to-edge (no card, no gutters, per the
+   base .chat-shell rule above). */
+@media (max-width:860px){
+  .chat-shell{ grid-template-columns:1fr; }
+  .chat-sidebar{ display:flex; }
+  .chat-main{ display:none; }
+  .chat-shell.show-main .chat-sidebar{ display:none; }
+  .chat-shell.show-main .chat-main{ display:flex; }
+  .chat-back-btn{ display:flex; }
+  .chat-bubble-wrap{ max-width:86%; }
+}
+
+/* Desktop-only: the composer "+" (attachments) menu opens to the LEFT of
+   its button instead of the default right:0 (see .chat-dropdown above).
+   Mobile/tablet (<=860px, the breakpoint used throughout this file) are
+   deliberately left out of this rule so their current behaviour is
+   untouched. positionDropdown() in chat.js still clamps this on-screen
+   afterwards if it would overflow the chat shell, same as every other
+   dropdown. */
+@media (min-width:861px){
+  #chat-composer-plus-dropdown{ left:auto; right:0; }
+}
+
+@media (max-width:760px){
+  /* Touch targets: 44px is the accepted comfortable minimum (Apple HIG /
+     Material both land here), up from the 36/42px desktop sizes which are
+     precise enough for a mouse cursor but a bit tight for a fingertip. */
+  .chat-icon-btn{ width:44px; height:44px; font-size:19px; }
+  .chat-icon-btn.xs{ width:30px; height:30px; font-size:14px; }
+  .chat-send-btn{ width:44px; height:44px; font-size:19px; }
+  .chat-composer-row{ gap:6px; }
+  .chat-composer-row textarea{ padding:11px 15px; font-size:16px; } /* 16px prevents iOS Safari's auto-zoom-on-focus */
+  .chat-emoji-btn{ width:38px; height:38px; font-size:21px; }
+}
+
+@media (max-width:520px){
+  .chat-messages{ padding:14px 12px; }
+  .chat-view-header{ padding:10px 12px; }
+  .chat-composer{ padding:8px 10px; padding-bottom:calc(8px + env(safe-area-inset-bottom, 0px)); }
+}
+
+/* ---------- connection status dot ---------- */
+.chat-conn-dot{
+  display:inline-block; width:8px; height:8px; border-radius:50%;
+  margin-inline-start:6px; vertical-align:middle; background:#9aa39c;
+  transition:background-color .25s ease;
+}
+.chat-conn-dot.connected{ background:#1fbf6b; }
+.chat-conn-dot.connecting{ background:#e0a423; animation:chatConnPulse 1.2s ease-in-out infinite; }
+.chat-conn-dot.offline{ background:#d8394c; }
+@keyframes chatConnPulse{ 0%,100%{ opacity:1; } 50%{ opacity:.35; } }
+
+/* ---------- new-message arrival animation ---------- */
+@keyframes chatMsgPop{
+  from{ opacity:0; transform:translateY(8px) scale(.97); }
+  to{ opacity:1; transform:translateY(0) scale(1); }
+}
+.chat-msg.chat-msg-pop{ animation:chatMsgPop .22s ease-out; }
+@media (prefers-reduced-motion: reduce){
+  .chat-msg.chat-msg-pop{ animation:none; }
+}
+
+/* ---------- lazy-loading older messages ---------- */
+.chat-load-older{
+  flex-shrink:0; text-align:center; font-size:12px; font-weight:600; color:var(--ink-soft);
+  padding:8px 0 2px;
+}
+
+/* ---------- copy-message toast ---------- */
+.chat-toast{
+  position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(12px);
+  background:var(--ink); color:#fff; font-size:13.5px; font-weight:600;
+  padding:10px 18px; border-radius:99px; box-shadow:var(--shadow-md, 0 8px 20px rgba(0,0,0,.18));
+  opacity:0; pointer-events:none; transition:opacity .2s ease, transform .2s ease; z-index:9999;
+}
+.chat-toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+/* ---------- Dark mode ----------
+   Everything in this file that reads var(--paper)/var(--ink)/etc already
+   re-skins itself via the token overrides in styles.css. What's collected
+   here is only the chat UI's hardcoded "#fff" surfaces (bubbles, dropdowns,
+   inputs, the composer, modals) — literal white was fine when the whole
+   app was light-only, but each of these needs an explicit dark surface
+   now. Grouped in one block rather than inline next to each rule since
+   there are ~15 of them and chat.css's rules are already dense. */
+html.dark-mode .chat-sidebar{ background:var(--paper); }
+html.dark-mode .chat-search input,
+html.dark-mode .chat-dropdown,
+html.dark-mode .chat-day-sep span,
+html.dark-mode .chat-bubble,
+html.dark-mode .chat-reaction-pill,
+html.dark-mode .chat-composer-row textarea,
+html.dark-mode .chat-drop-overlay div,
+html.dark-mode .chat-emoji-panel,
+html.dark-mode .chat-emoji-search input,
+html.dark-mode .chat-poll-option-btn,
+html.dark-mode .chat-poll-type-btn,
+html.dark-mode .chat-poll-option-row input.chat-poll-option-input,
+html.dark-mode .chat-modal,
+html.dark-mode .chat-modal-body input[type=text],
+html.dark-mode .chat-modal-body input[type=datetime-local]{
+  background:var(--paper);
+}
+/* The copy-message toast is a small fixed-dark pill by design in both
+   themes (like a snackbar) — it uses var(--ink) as a shortcut for "always
+   dark" in light mode, but var(--ink) itself flips to near-white in dark
+   mode, which would turn the toast white-on-white. Pin it back to a
+   dedicated dark tone here so the white text stays readable either way. */
+html.dark-mode .chat-toast{ background:#0e2a1f; }
+
+/* ---------- Group photo picker + circular crop ---------- */
+.group-photo-picker{ display:flex; align-items:center; gap:14px; }
+.group-photo-picker-avatar{
+  padding:0; border:none; background:none; cursor:pointer; border-radius:50%;
+  position:relative; flex-shrink:0;
+}
+.group-photo-picker-avatar .chat-avatar{ width:64px; height:64px; font-size:22px; }
+.group-photo-picker-avatar::after{
+  content:"✎"; position:absolute; bottom:-2px; inset-inline-end:-2px;
+  width:22px; height:22px; border-radius:50%; background:var(--green-deep); color:#fff;
+  font-size:11px; display:flex; align-items:center; justify-content:center; border:2px solid var(--paper);
+}
+.group-photo-picker-readonly .chat-avatar{ width:64px; height:64px; font-size:22px; }
+.group-photo-picker-actions{ display:flex; flex-direction:column; gap:6px; align-items:flex-start; }
+
+.crop-stage{
+  position:relative; margin:0 auto; overflow:hidden; border-radius:12px;
+  background:#000; cursor:grab; touch-action:none; border:1px solid var(--line-strong);
+}
+.crop-stage:active{ cursor:grabbing; }
+.crop-stage img{ position:absolute; top:0; left:0; user-select:none; pointer-events:none; max-width:none; }
+/* A square-minus-circle "hole" mask via a huge box-shadow spread — darkens
+   everything outside the circular crop area without needing a second
+   canvas or SVG mask, and stays perfectly centered regardless of stage size. */
+.crop-circle-mask{
+  position:absolute; inset:0; border-radius:50%;
+  box-shadow:0 0 0 2000px rgba(0,0,0,.55);
+  border:2px solid rgba(255,255,255,.85);
+  pointer-events:none;
+}
